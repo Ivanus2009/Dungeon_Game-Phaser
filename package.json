@@ -11,5 +11,12 @@
   "description": "",
   "dependencies": {
     "phaser": "^3.88.2"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "scripts": {
+    "start": "http-server ."
   }
 }
+
