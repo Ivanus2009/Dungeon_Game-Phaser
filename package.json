@@ -1,22 +1,21 @@
 {
-  "name": "dungeon_game",
+  "name": "bimbimbambam-game",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "3D Megabonk-style game with contracts and mobs",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
-  "keywords": [],
+  "keywords": ["game", "3d", "three.js", "incremental"],
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
   "dependencies": {
-    "phaser": "^3.88.2"
+    "three": "^0.160.0"
   },
   "devDependencies": {
-    "http-server": "^14.1.1"
-  },
-  "scripts": {
-    "start": "http-server ."
+    "vite": "^5.0.0"
   }
 }
 

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Showroom - BimBimBamBam Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        #showroom-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            display: flex;
+        }
+
+        #canvas {
+            flex: 1;
+            display: block;
+        }
+
+        #controls-panel {
+            width: 300px;
+            background: rgba(30, 30, 30, 0.95);
+            border-left: 2px solid #4a90e2;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        #controls-panel h1 {
+            color: #4a90e2;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+        }
+
+        .section h2 {
+            color: #4a90e2;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        .control-group select,
+        .control-group input {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #4a90e2;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .control-group button {
+            width: 100%;
+            padding: 10px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .control-group button:hover {
+            background: #5aa0f2;
+        }
+
+        .entity-list {
+            list-style: none;
+        }
+
+        .entity-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .entity-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .entity-item.active {
+            background: rgba(74, 226, 74, 0.3);
+            border: 1px solid #4ae24a;
+        }
+
+        #back-button {
+            position: absolute;
+            top: 20px;
+            right: 320px;
+            padding: 10px 20px;
+            background: #e24a4a;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        #back-button:hover {
+            background: #f25a5a;
+        }
+    </style>
+</head>
+<body>
+    <div id="showroom-container">
+        <canvas id="canvas"></canvas>
+        <button id="back-button" onclick="window.location.href='index.html'">← Назад в игру</button>
+        <div id="controls-panel">
+            <h1>Showroom</h1>
+
+            <!-- Выбор сущности -->
+            <div class="section">
+                <h2>Сущности</h2>
+                <ul class="entity-list">
+                    <li class="entity-item" data-entity="player">Игрок</li>
+                    <li class="entity-item" data-entity="slime">Слайм</li>
+                    <li class="entity-item" data-entity="goblin">Гоблин</li>
+                    <li class="entity-item" data-entity="orc">Орк</li>
+                    <li class="entity-item" data-entity="boss">Босс</li>
+                </ul>
+            </div>
+
+            <!-- Анимации -->
+            <div class="section">
+                <h2>Анимации</h2>
+                <div class="control-group">
+                    <button id="play-death">Анимация смерти</button>
+                    <button id="play-attack">Анимация атаки</button>
+                    <button id="reset">Сбросить</button>
+                </div>
+            </div>
+
+            <!-- Текстуры земли -->
+            <div class="section">
+                <h2>Текстуры земли</h2>
+                <div class="control-group">
+                    <label>Цвет пола:</label>
+                    <input type="color" id="floor-color" value="#222222">
+                </div>
+                <div class="control-group">
+                    <label>Roughness:</label>
+                    <input type="range" id="floor-roughness" min="0" max="1" step="0.1" value="0.8">
+                    <span id="roughness-value">0.8</span>
+                </div>
+                <div class="control-group">
+                    <label>Metalness:</label>
+                    <input type="range" id="floor-metalness" min="0" max="1" step="0.1" value="0.2">
+                    <span id="metalness-value">0.2</span>
+                </div>
+            </div>
+
+            <!-- Освещение -->
+            <div class="section">
+                <h2>Освещение</h2>
+                <div class="control-group">
+                    <label>Интенсивность:</label>
+                    <input type="range" id="light-intensity" min="0" max="2" step="0.1" value="1">
+                    <span id="intensity-value">1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/showroom.js"></script>
+</body>
+</html>
+
