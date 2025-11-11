@@ -5,10 +5,66 @@ export class UIManager {
 
     update() {
         this.updateTimer();
+        this.updatePlayerHealthBar();
+        this.updateExpBar();
+        this.updatePlayerLevel();
         
         // Обновляем меню паузы только если оно открыто
         if (this.game.isPaused) {
             this.updatePauseMenu();
+        }
+    }
+    
+    updatePlayerHealthBar() {
+        if (!this.game.player) return;
+        
+        const player = this.game.player;
+        const healthBar = document.getElementById('player-health-bar');
+        const healthBarFill = document.getElementById('player-health-bar-fill');
+        const healthText = document.getElementById('player-health-text');
+        
+        if (healthBar && healthBarFill && healthText) {
+            const healthPercent = Math.max(0, Math.min(1, player.health / player.maxHealth));
+            healthBarFill.style.width = `${healthPercent * 100}%`;
+            
+            // Цвет в зависимости от здоровья
+            if (healthPercent > 0.6) {
+                healthBarFill.style.backgroundColor = '#00ff00';
+            } else if (healthPercent > 0.3) {
+                healthBarFill.style.backgroundColor = '#ffff00';
+            } else {
+                healthBarFill.style.backgroundColor = '#ff0000';
+            }
+            
+            // Текст здоровья
+            healthText.textContent = `${Math.floor(player.health)} / ${player.maxHealth}`;
+        }
+    }
+
+    updateExpBar() {
+        if (!this.game.player) return;
+        
+        const player = this.game.player;
+        const expBarFill = document.getElementById('exp-bar-fill');
+        
+        if (expBarFill) {
+            // Вычисляем процент опыта до следующего уровня
+            const expPercent = player.expToNextLevel > 0 
+                ? Math.max(0, Math.min(1, player.exp / player.expToNextLevel))
+                : 1;
+            
+            expBarFill.style.width = `${expPercent * 100}%`;
+        }
+    }
+
+    updatePlayerLevel() {
+        if (!this.game.player) return;
+        
+        const player = this.game.player;
+        const levelElement = document.getElementById('player-level');
+        
+        if (levelElement) {
+            levelElement.textContent = `Level ${player.level}`;
         }
     }
 
@@ -50,7 +106,7 @@ export class UIManager {
         if (damageEl) damageEl.textContent = player.getDamage();
         if (expEl) expEl.textContent = Math.floor(player.exp);
         if (expNextEl) expNextEl.textContent = Math.floor(player.expToNextLevel);
-        if (healthEl) healthEl.textContent = '-'; // Пока не реализовано
+        if (healthEl) healthEl.textContent = `${Math.floor(player.health)} / ${player.maxHealth}`;
         if (goldEl) goldEl.textContent = resources.gold.toLocaleString();
         if (crystalsEl) crystalsEl.textContent = resources.crystals.toLocaleString();
 

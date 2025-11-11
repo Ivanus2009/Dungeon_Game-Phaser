@@ -35,7 +35,11 @@ export class Player {
         this.jumpVelocity = 0;
         this.gravity = -20;
         this.jumpPower = 8;
-        this.groundY = 0;
+        this.groundY = 0.5; // Игрок стоит на высоте 0.5 (ноги на земле)
+        
+        // Отталкивание при получении урона
+        this.knockbackVelocity = new THREE.Vector3(0, 0, 0);
+        this.knockbackDecay = 8.0; // Затухание отталкивания
         
         // Создание 3D модели игрока
         this.createMesh();
@@ -98,58 +102,22 @@ export class Player {
         rightLeg.castShadow = true;
         this.mesh.add(rightLeg);
         
-        this.mesh.position.set(0, 0, 0);
+        // Сохраняем ссылки на ноги, чтобы исключить их из эффекта урона
+        this.leftLeg = leftLeg;
+        this.rightLeg = rightLeg;
+        
+        // Устанавливаем начальную позицию с учетом groundY
+        this.mesh.position.set(0, this.groundY, 0);
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
         
         // Анимация вращения оружия при атаке
         this.attackAnimationTime = 0;
         
-        // Создаем HP бар над игроком
-        this.createHealthBar();
+        // HP бар игрока теперь в UI (HTML), не в 3D
     }
 
-    createHealthBar() {
-        // Фон HP бара
-        const bgGeometry = new THREE.PlaneGeometry(1, 0.1);
-        const bgMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x000000,
-            side: THREE.DoubleSide // Двусторонний
-        });
-        this.healthBarBg = new THREE.Mesh(bgGeometry, bgMaterial);
-        this.healthBarBg.position.y = 2.0;
-        this.mesh.add(this.healthBarBg);
-        
-        // HP бар
-        const barGeometry = new THREE.PlaneGeometry(1, 0.1);
-        const barMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x00ff00,
-            side: THREE.DoubleSide // Двусторонний
-        });
-        this.healthBar = new THREE.Mesh(barGeometry, barMaterial);
-        this.healthBar.position.y = 2.0;
-        this.healthBar.position.z = 0.01;
-        this.mesh.add(this.healthBar);
-    }
-
-    updateHealthBar() {
-        if (this.healthBar && this.healthBarBg) {
-            const healthPercent = this.health / this.maxHealth;
-            this.healthBar.scale.x = healthPercent;
-            this.healthBar.position.x = -(1 - healthPercent) / 2;
-            
-            // Цвет в зависимости от здоровья
-            if (healthPercent > 0.6) {
-                this.healthBar.material.color.setHex(0x00ff00);
-            } else if (healthPercent > 0.3) {
-                this.healthBar.material.color.setHex(0xffff00);
-            } else {
-                this.healthBar.material.color.setHex(0xff0000);
-            }
-        }
-    }
-
-    takeDamage(damage) {
+    takeDamage(damage, knockbackDirection = null) {
         if (this.isDead) return;
         
         this.health -= damage;
@@ -159,11 +127,21 @@ export class Player {
             console.log('Игрок умер!');
         }
         
-        this.updateHealthBar();
+        // Отталкивание от моба
+        if (knockbackDirection && knockbackDirection.lengthSq() > 0) {
+            knockbackDirection.normalize();
+            const knockbackStrength = 9.0; // Сила отталкивания (увеличена в 3 раза)
+            this.knockbackVelocity.copy(knockbackDirection).multiplyScalar(knockbackStrength);
+        }
         
-        // Визуальный эффект получения урона
+        // Визуальный эффект получения урона (исключаем ноги)
         if (this.mesh) {
             this.mesh.traverse((child) => {
+                // Пропускаем ноги
+                if (child === this.leftLeg || child === this.rightLeg) {
+                    return;
+                }
+                
                 if (child instanceof THREE.Mesh && child.material) {
                     const originalColor = child.material.color.clone();
                     child.material.color.setHex(0xff0000);
@@ -213,7 +191,20 @@ export class Player {
     }
 
     update(deltaTime, cameraDirection, camera) {
-        if (this.isDead) return;
+        if (this.isDead || !this.mesh || deltaTime <= 0) return;
+        
+        // Обработка отталкивания
+        if (this.knockbackVelocity.lengthSq() > 0.01) {
+            // Применяем отталкивание (только по горизонтали)
+            this.knockbackVelocity.y = 0;
+            this.mesh.position.addScaledVector(this.knockbackVelocity, deltaTime);
+            
+            // Затухание отталкивания
+            this.knockbackVelocity.multiplyScalar(1 - this.knockbackDecay * deltaTime);
+            if (this.knockbackVelocity.lengthSq() < 0.01) {
+                this.knockbackVelocity.set(0, 0, 0);
+            }
+        }
         
         // Прыжок
         if (this.keys.space && !this.isJumping && Math.abs(this.mesh.position.y - this.groundY) < 0.1) {
@@ -226,72 +217,82 @@ export class Player {
             this.jumpVelocity += this.gravity * deltaTime;
             this.mesh.position.y += this.jumpVelocity * deltaTime;
             
+            // Коллизия с землей - не даем игроку погрузиться под землю
             if (this.mesh.position.y <= this.groundY) {
                 this.mesh.position.y = this.groundY;
                 this.jumpVelocity = 0;
                 this.isJumping = false;
             }
+        } else {
+            // Если игрок не прыгает, но почему-то ниже земли - поднимаем его
+            if (this.mesh.position.y < this.groundY) {
+                this.mesh.position.y = this.groundY;
+            }
         }
         
-        // Движение
-        this.velocity.set(0, 0, 0);
-        
-        const moveForward = this.keys.w || this.keys.arrowUp;
-        const moveBackward = this.keys.s || this.keys.arrowDown;
+        // Движение - переписанная версия
+        // Проверяем нажатые клавиши
+        const moveForward = this.keys.w;
+        const moveBackward = this.keys.s;
         const moveLeft = this.keys.a || this.keys.arrowLeft;
         const moveRight = this.keys.d || this.keys.arrowRight;
         
+        // Если есть какое-то движение
         if (moveForward || moveBackward || moveLeft || moveRight) {
-            // Получаем направление движения относительно камеры
+            // Вычисляем направление движения
             const forward = new THREE.Vector3();
             const right = new THREE.Vector3();
             
+            // Используем направление камеры если оно есть
             if (cameraDirection) {
                 forward.copy(cameraDirection);
                 forward.y = 0;
-                forward.normalize();
                 
-                right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
-                right.normalize();
+                if (forward.lengthSq() > 0.001) {
+                    forward.normalize();
+                    right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+                    right.normalize();
+                } else {
+                    // Если направление камеры некорректное, используем дефолтное
+                    forward.set(0, 0, -1);
+                    right.set(1, 0, 0);
+                }
+            } else if (camera) {
+                // Получаем направление камеры напрямую
+                const camDir = new THREE.Vector3();
+                camera.getWorldDirection(camDir);
+                camDir.y = 0;
+                if (camDir.lengthSq() > 0.001) {
+                    camDir.normalize();
+                    forward.copy(camDir);
+                    right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
+                    right.normalize();
+                } else {
+                    forward.set(0, 0, -1);
+                    right.set(1, 0, 0);
+                }
             } else {
-                // Если камера не передана, используем направление по Z
+                // Запасной вариант - движение по осям мира
                 forward.set(0, 0, -1);
                 right.set(1, 0, 0);
             }
             
-            if (moveForward) {
-                this.velocity.add(forward);
-            }
-            if (moveBackward) {
-                this.velocity.sub(forward);
-            }
-            if (moveLeft) {
-                this.velocity.sub(right);
-            }
-            if (moveRight) {
-                this.velocity.add(right);
-            }
+            // Вычисляем вектор движения
+            const moveDir = new THREE.Vector3(0, 0, 0);
+            if (moveForward) moveDir.add(forward);
+            if (moveBackward) moveDir.sub(forward);
+            if (moveLeft) moveDir.sub(right);
+            if (moveRight) moveDir.add(right);
             
-            // Нормализуем для одинаковой скорости во всех направлениях
-            if (this.velocity.lengthSq() > 0) {
-                this.velocity.normalize().multiplyScalar(this.moveSpeed);
-                this.mesh.position.addScaledVector(this.velocity, deltaTime);
+            // Применяем движение
+            if (moveDir.lengthSq() > 0.001) {
+                moveDir.normalize();
+                const moveDistance = this.moveSpeed * deltaTime;
+                this.mesh.position.addScaledVector(moveDir, moveDistance);
                 
                 // Вращение игрока в направлении движения
-                const lookDirection = this.velocity.clone().normalize();
-                this.mesh.rotation.y = Math.atan2(lookDirection.x, lookDirection.z);
+                this.mesh.rotation.y = Math.atan2(moveDir.x, moveDir.z);
             }
-        }
-        
-        // Обновляем HP бар, чтобы он всегда смотрел на камеру (billboard)
-        if (this.healthBar && this.healthBarBg && camera) {
-            const worldPos = new THREE.Vector3();
-            this.mesh.getWorldPosition(worldPos);
-            worldPos.y += 2.0; // Высота HP бара
-            
-            // Поворачиваем HP бары к камере
-            this.healthBar.lookAt(camera.position);
-            this.healthBarBg.lookAt(camera.position);
         }
         
         // Анимация оружия при атаке
@@ -309,6 +310,11 @@ export class Player {
         if (key in this.keys) {
             this.keys[key] = pressed;
         }
+    }
+    
+    // Метод для проверки состояния клавиш (для отладки)
+    getKeysState() {
+        return { ...this.keys };
     }
 
     getHealth() {

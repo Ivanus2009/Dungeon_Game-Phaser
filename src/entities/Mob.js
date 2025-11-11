@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GameConfig } from '../core/Config.js';
 
 export class Mob {
-    constructor(type, level = 1) {
+    constructor(type, level = 1, gameTime = 0) {
         this.type = type;
         this.level = level;
         this.mobData = GameConfig.mobs.types.find(t => t.id === type);
@@ -11,9 +11,15 @@ export class Mob {
             throw new Error(`Unknown mob type: ${type}`);
         }
 
-        this.maxHealth = Math.floor(
-            this.mobData.health * Math.pow(GameConfig.mobs.healthMultiplier, level - 1)
-        );
+        // Базовое здоровье с учетом уровня
+        const baseHealth = this.mobData.health * Math.pow(GameConfig.mobs.healthMultiplier, level - 1);
+        
+        // Мультипликатор HP в зависимости от времени игры
+        // Формула: 1 + (время игры в секундах * масштаб)
+        // Например, через 100 секунд: 1 + (100 * 0.02) = 3.0 (HP увеличится в 3 раза)
+        const timeMultiplier = GameConfig.mobs.healthTimeMultiplier + (gameTime * GameConfig.mobs.healthTimeScale);
+        
+        this.maxHealth = Math.floor(baseHealth * timeMultiplier);
         this.health = this.maxHealth;
         this.isDead = false;
         this.reward = {
@@ -61,8 +67,7 @@ export class Mob {
         this.mesh.receiveShadow = true;
         this.bobOffset = 0;
         
-        // Добавляем индикатор здоровья
-        this.createHealthBar();
+        // HP бары у мобов убраны
     }
 
     createSlimeMesh(size) {
@@ -257,30 +262,6 @@ export class Mob {
         this.mesh.add(rightEye);
     }
 
-    createHealthBar() {
-        // Определяем высоту моба в зависимости от типа
-        const height = this.type === 'boss' ? 2.5 : (this.type === 'orc' ? 1.8 : (this.type === 'goblin' ? 1.2 : 1.0));
-        
-        // Создаем простой индикатор здоровья
-        const barGeometry = new THREE.PlaneGeometry(1, 0.1);
-        const barMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff0000,
-            side: THREE.DoubleSide // Двусторонний
-        });
-        this.healthBar = new THREE.Mesh(barGeometry, barMaterial);
-        this.healthBar.position.y = height + 0.3;
-        this.mesh.add(this.healthBar);
-        
-        const bgGeometry = new THREE.PlaneGeometry(1, 0.1);
-        const bgMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x000000,
-            side: THREE.DoubleSide // Двусторонний
-        });
-        this.healthBarBg = new THREE.Mesh(bgGeometry, bgMaterial);
-        this.healthBarBg.position.y = height + 0.3;
-        this.healthBarBg.position.z = -0.01;
-        this.mesh.add(this.healthBarBg);
-    }
 
     setRandomPosition() {
         const range = GameConfig.scene.floor.size / 2 - 5;
@@ -348,8 +329,6 @@ export class Mob {
             this.die();
         }
         
-        this.updateHealthBar();
-        
         // Визуальный эффект получения урона (мигание)
         this.mesh.traverse((child) => {
             if (child instanceof THREE.Mesh && child.material && child.material.emissiveIntensity !== undefined) {
@@ -364,22 +343,6 @@ export class Mob {
         });
     }
 
-    updateHealthBar() {
-        if (this.healthBar) {
-            const healthPercent = this.health / this.maxHealth;
-            this.healthBar.scale.x = healthPercent;
-            this.healthBar.position.x = -(1 - healthPercent) / 2;
-            
-            // Цвет в зависимости от здоровья
-            if (healthPercent > 0.6) {
-                this.healthBar.material.color.setHex(0x00ff00);
-            } else if (healthPercent > 0.3) {
-                this.healthBar.material.color.setHex(0xffff00);
-            } else {
-                this.healthBar.material.color.setHex(0xff0000);
-            }
-        }
-    }
 
     die() {
         this.isDead = true;
@@ -445,11 +408,7 @@ export class Mob {
             this.mesh.rotation.y += deltaTime * (this.type === 'boss' ? 0.2 : 0.3);
         }
         
-        // Обновляем HP бары, чтобы они всегда смотрели на камеру (billboard эффект)
-        if (this.healthBar && this.healthBarBg && camera) {
-            this.healthBar.lookAt(camera.position);
-            this.healthBarBg.lookAt(camera.position);
-        }
+        // HP бары у мобов убраны
     }
 
     getReward() {

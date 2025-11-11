@@ -8,6 +8,7 @@ import { ResourcesSystem } from '../systems/ResourcesSystem.js';
 import { AttackEffects } from '../systems/AttackEffects.js';
 import { TargetingSystem } from '../systems/TargetingSystem.js';
 import { UIManager } from '../ui/UIManager.js';
+import { ExpParticle } from '../entities/ExpParticle.js';
 
 export class Game {
     constructor() {
@@ -16,6 +17,7 @@ export class Game {
         this.renderer = null;
         this.player = null;
         this.mobs = [];
+        this.expParticles = []; // Частицы опыта
         this.mobSpawner = null;
         this.combatSystem = null;
         this.contractSystem = null;
@@ -37,14 +39,16 @@ export class Game {
         this.firstFrame = true; // Флаг первого кадра
         
         // Управление камерой
-        this.cameraRotation = { x: 0, y: 0 };
+        this.cameraRotation = { x: 0, y: 0 }; // x фиксирован на 0 (только горизонтальное вращение)
         this.mouseDown = false;
         this.lastMouseX = 0;
         this.lastMouseY = 0;
-        this.cameraDistance = 15;
+        this.cameraDistance = 10; // Приближенная камера по умолчанию
         this.cameraHeight = 8;
         this.minCameraDistance = 8;
         this.maxCameraDistance = 25;
+        this.zoomKeys = { up: false, down: false }; // Состояние клавиш зума
+        this.zoomSpeed = 3.0; // Скорость зума
         
         // Асинхронная инициализация, чтобы не блокировать поток
         this.initAsync();
@@ -199,20 +203,46 @@ export class Game {
             return;
         }
         
-        // Меню паузы по Escape
-        window.addEventListener('keydown', (e) => {
+        // Делаем canvas фокусируемым для обработки клавиатуры
+        canvas.setAttribute('tabindex', '0');
+        canvas.style.outline = 'none';
+        
+        // Автоматически фокусируем canvas при загрузке
+        setTimeout(() => {
+            canvas.focus();
+        }, 100);
+        
+        // Фокусируем canvas при клике на него
+        canvas.addEventListener('click', () => {
+            canvas.focus();
+        });
+        
+        // Фокусируем canvas при загрузке страницы
+        window.addEventListener('load', () => {
+            canvas.focus();
+        });
+        
+        // Обрабатываем все события клавиатуры - простой и надежный подход
+        // Используем один обработчик на document
+        document.addEventListener('keydown', (e) => {
+            // Escape всегда работает для паузы
             if (e.key === 'Escape') {
                 this.togglePause();
                 e.preventDefault();
-            } else {
-                // Управление игроком (обрабатываем всегда, но внутри handleKeyDown проверяем isPaused)
+                return;
+            }
+            
+            // Остальные клавиши обрабатываем только если игра не на паузе
+            if (!this.isPaused) {
                 this.handleKeyDown(e);
             }
         });
-
-        window.addEventListener('keyup', (e) => {
-            // Управление игроком (обрабатываем всегда, но внутри handleKeyUp проверяем isPaused)
-            this.handleKeyUp(e);
+        
+        document.addEventListener('keyup', (e) => {
+            // Обрабатываем только если игра не на паузе
+            if (!this.isPaused) {
+                this.handleKeyUp(e);
+            }
         });
         
         // Предотвращаем контекстное меню по правой кнопке мыши на canvas
@@ -234,11 +264,12 @@ export class Game {
         canvas.addEventListener('mousemove', (e) => {
             if (this.mouseDown && !this.isPaused) {
                 const deltaX = e.clientX - this.lastMouseX;
-                const deltaY = e.clientY - this.lastMouseY;
+                // Убираем вертикальную прокрутку - только горизонтальное вращение
+                // this.cameraRotation.x остается фиксированным (0)
                 
                 this.cameraRotation.y -= deltaX * GameConfig.player.cameraRotationSpeed;
-                this.cameraRotation.x -= deltaY * GameConfig.player.cameraRotationSpeed;
-                this.cameraRotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, this.cameraRotation.x));
+                // Фиксируем камеру в горизонтальной плоскости
+                this.cameraRotation.x = 0;
                 
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
@@ -261,11 +292,12 @@ export class Game {
         canvas.addEventListener('touchmove', (e) => {
             if (this.mouseDown && !this.isPaused && e.touches.length > 0) {
                 const deltaX = e.touches[0].clientX - this.lastMouseX;
-                const deltaY = e.touches[0].clientY - this.lastMouseY;
+                // Убираем вертикальную прокрутку - только горизонтальное вращение
+                // this.cameraRotation.x остается фиксированным (0)
                 
                 this.cameraRotation.y -= deltaX * GameConfig.player.cameraRotationSpeed;
-                this.cameraRotation.x -= deltaY * GameConfig.player.cameraRotationSpeed;
-                this.cameraRotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, this.cameraRotation.x));
+                // Фиксируем камеру в горизонтальной плоскости
+                this.cameraRotation.x = 0;
                 
                 this.lastMouseX = e.touches[0].clientX;
                 this.lastMouseY = e.touches[0].clientY;
@@ -279,57 +311,107 @@ export class Game {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Зум камеры колесиком мыши
-        canvas.addEventListener('wheel', (e) => {
-            if (this.isPaused) return;
-            e.preventDefault();
-            const zoomSpeed = 1.0;
-            this.cameraDistance += e.deltaY * 0.01 * zoomSpeed;
-            this.cameraDistance = Math.max(this.minCameraDistance, Math.min(this.maxCameraDistance, this.cameraDistance));
-        });
+        // Зум камеры теперь на стрелках вверх/вниз (убрали wheel)
     }
 
     handleKeyDown(e) {
-        // Не обрабатываем клавиши, если игра на паузе (кроме Escape, который обрабатывается отдельно)
-        if (this.isPaused) return;
-        
         // Проверяем, что игрок инициализирован
-        if (!this.player || !this.player.setKey) return;
-        
-        const key = e.key.toLowerCase();
-        if (key === 'w') this.player.setKey('w', true);
-        if (key === 'a') this.player.setKey('a', true);
-        if (key === 's') this.player.setKey('s', true);
-        if (key === 'd') this.player.setKey('d', true);
-        if (e.key === ' ') {
-            this.player.setKey('space', true);
-            e.preventDefault(); // Предотвращаем прокрутку страницы
+        if (!this.player) {
+            return;
         }
         
-        if (e.key === 'ArrowUp') this.player.setKey('arrowUp', true);
-        if (e.key === 'ArrowLeft') this.player.setKey('arrowLeft', true);
-        if (e.key === 'ArrowDown') this.player.setKey('arrowDown', true);
-        if (e.key === 'ArrowRight') this.player.setKey('arrowRight', true);
+        if (!this.player.setKey || !this.player.keys) {
+            return;
+        }
+        
+        const key = e.key.toLowerCase();
+        
+        // Обрабатываем WASD (английская и русская раскладка)
+        if (key === 'w' || key === 'ц') {
+            this.player.keys.w = true;
+            e.preventDefault();
+        } else if (key === 'a' || key === 'ф') {
+            this.player.keys.a = true;
+            e.preventDefault();
+        } else if (key === 's' || key === 'ы') {
+            this.player.keys.s = true;
+            e.preventDefault();
+        } else if (key === 'd' || key === 'в') {
+            this.player.keys.d = true;
+            e.preventDefault();
+        }
+        
+        // Пробел для прыжка
+        if (e.key === ' ' || e.key === 'Space') {
+            this.player.keys.space = true;
+            e.preventDefault();
+        }
+        
+        // Стрелки влево/вправо - движение
+        if (e.key === 'ArrowLeft') {
+            this.player.keys.arrowLeft = true;
+            e.preventDefault();
+        } else if (e.key === 'ArrowRight') {
+            this.player.keys.arrowRight = true;
+            e.preventDefault();
+        }
+        
+        // Стрелки вверх/вниз - зум камеры
+        if (e.key === 'ArrowUp') {
+            this.zoomKeys.up = true;
+            e.preventDefault();
+        } else if (e.key === 'ArrowDown') {
+            this.zoomKeys.down = true;
+            e.preventDefault();
+        }
     }
 
     handleKeyUp(e) {
-        // Не обрабатываем клавиши, если игра на паузе
-        if (this.isPaused) return;
-        
         // Проверяем, что игрок инициализирован
-        if (!this.player || !this.player.setKey) return;
+        if (!this.player || !this.player.keys) {
+            return;
+        }
         
         const key = e.key.toLowerCase();
-        if (key === 'w') this.player.setKey('w', false);
-        if (key === 'a') this.player.setKey('a', false);
-        if (key === 's') this.player.setKey('s', false);
-        if (key === 'd') this.player.setKey('d', false);
-        if (e.key === ' ') this.player.setKey('space', false);
         
-        if (e.key === 'ArrowUp') this.player.setKey('arrowUp', false);
-        if (e.key === 'ArrowLeft') this.player.setKey('arrowLeft', false);
-        if (e.key === 'ArrowDown') this.player.setKey('arrowDown', false);
-        if (e.key === 'ArrowRight') this.player.setKey('arrowRight', false);
+        // Обрабатываем WASD (английская и русская раскладка)
+        if (key === 'w' || key === 'ц') {
+            this.player.keys.w = false;
+            e.preventDefault();
+        } else if (key === 'a' || key === 'ф') {
+            this.player.keys.a = false;
+            e.preventDefault();
+        } else if (key === 's' || key === 'ы') {
+            this.player.keys.s = false;
+            e.preventDefault();
+        } else if (key === 'd' || key === 'в') {
+            this.player.keys.d = false;
+            e.preventDefault();
+        }
+        
+        // Пробел для прыжка
+        if (e.key === ' ' || e.key === 'Space') {
+            this.player.keys.space = false;
+            e.preventDefault();
+        }
+        
+        // Стрелки влево/вправо - движение
+        if (e.key === 'ArrowLeft') {
+            this.player.keys.arrowLeft = false;
+            e.preventDefault();
+        } else if (e.key === 'ArrowRight') {
+            this.player.keys.arrowRight = false;
+            e.preventDefault();
+        }
+        
+        // Стрелки вверх/вниз - зум
+        if (e.key === 'ArrowUp') {
+            this.zoomKeys.up = false;
+            e.preventDefault();
+        } else if (e.key === 'ArrowDown') {
+            this.zoomKeys.down = false;
+            e.preventDefault();
+        }
     }
 
     updateCameraPosition() {
@@ -337,11 +419,12 @@ export class Game {
         
         const playerPos = this.player.mesh.position;
         
-        // Вычисляем позицию камеры относительно игрока
+        // Фиксируем камеру в горизонтальной плоскости (cameraRotation.x = 0)
+        // Камера вращается только по горизонтали (cameraRotation.y)
         const cameraOffset = new THREE.Vector3(
-            Math.sin(this.cameraRotation.y) * Math.cos(this.cameraRotation.x) * this.cameraDistance,
-            Math.sin(this.cameraRotation.x) * this.cameraDistance + this.cameraHeight,
-            Math.cos(this.cameraRotation.y) * Math.cos(this.cameraRotation.x) * this.cameraDistance
+            Math.sin(this.cameraRotation.y) * this.cameraDistance,
+            this.cameraHeight, // Фиксированная высота
+            Math.cos(this.cameraRotation.y) * this.cameraDistance
         );
         
         this.camera.position.copy(playerPos).add(cameraOffset);
@@ -365,6 +448,17 @@ export class Game {
         if (this.isPaused) {
             // Начинаем паузу - запоминаем время начала паузы
             this.pauseStartTime = performance.now();
+            
+            // Сбрасываем все клавиши при паузе
+            if (this.player && this.player.keys) {
+                for (const key in this.player.keys) {
+                    this.player.keys[key] = false;
+                }
+            }
+            
+            // Сбрасываем состояние зума
+            this.zoomKeys.up = false;
+            this.zoomKeys.down = false;
         } else {
             // Возобновление - добавляем время паузы к общему времени паузы
             if (this.pauseStartTime > 0) {
@@ -373,6 +467,17 @@ export class Game {
             // Сбрасываем lastFrameTime, чтобы избежать большого deltaTime при возобновлении
             this.lastFrameTime = performance.now();
             this.pauseStartTime = 0;
+            
+            // Сбрасываем все клавиши при выходе из паузы
+            if (this.player && this.player.keys) {
+                for (const key in this.player.keys) {
+                    this.player.keys[key] = false;
+                }
+            }
+            
+            // Сбрасываем состояние зума
+            this.zoomKeys.up = false;
+            this.zoomKeys.down = false;
         }
     }
 
@@ -494,6 +599,18 @@ export class Game {
             // Обновляем время игры (только когда не на паузе)
             this.gameTime += deltaTime;
 
+            // Обновление зума камеры (если нажаты клавиши)
+            if (!this.isPaused) {
+                if (this.zoomKeys.up) {
+                    // Приближение (уменьшаем расстояние)
+                    this.cameraDistance = Math.max(this.minCameraDistance, this.cameraDistance - this.zoomSpeed * deltaTime);
+                }
+                if (this.zoomKeys.down) {
+                    // Отдаление (увеличиваем расстояние)
+                    this.cameraDistance = Math.min(this.maxCameraDistance, this.cameraDistance + this.zoomSpeed * deltaTime);
+                }
+            }
+            
             // Обновление камеры
             try {
                 this.updateCameraPosition();
@@ -502,17 +619,49 @@ export class Game {
             }
 
             // Обновление игрока (с направлением камеры и камерой для billboard)
-            if (this.player && this.player.update) {
+            if (this.player && this.player.update && this.player.mesh && deltaTime > 0 && !this.isPaused) {
                 try {
-                    const cameraDirection = this.getCameraDirection();
+                    // Получаем направление камеры для движения
+                    let cameraDirection = null;
+                    if (this.camera) {
+                        cameraDirection = this.getCameraDirection();
+                        if (cameraDirection) {
+                            // Обнуляем вертикальную составляющую
+                            cameraDirection.y = 0;
+                            if (cameraDirection.lengthSq() < 0.01) {
+                                // Если направление слишком маленькое, используем направление камеры по Y (вращение)
+                                cameraDirection.set(
+                                    Math.sin(this.cameraRotation.y),
+                                    0,
+                                    Math.cos(this.cameraRotation.y)
+                                );
+                            } else {
+                                cameraDirection.normalize();
+                            }
+                        }
+                    }
+                    
+                    // Если direction все еще null, используем направление по вращению камеры
+                    if (!cameraDirection) {
+                        cameraDirection = new THREE.Vector3(
+                            Math.sin(this.cameraRotation.y),
+                            0,
+                            Math.cos(this.cameraRotation.y)
+                        );
+                    }
+                    
+                    // Обновляем игрока
                     this.player.update(deltaTime, cameraDirection, this.camera);
 
                     // Ограничиваем позицию игрока границами карты
-                    const mapSize = GameConfig.scene.floor.size / 2 - 2;
-                    this.player.mesh.position.x = Math.max(-mapSize, Math.min(mapSize, this.player.mesh.position.x));
-                    this.player.mesh.position.z = Math.max(-mapSize, Math.min(mapSize, this.player.mesh.position.z));
+                    if (this.player.mesh) {
+                        const mapSize = GameConfig.scene.floor.size / 2 - 2;
+                        this.player.mesh.position.x = Math.max(-mapSize, Math.min(mapSize, this.player.mesh.position.x));
+                        this.player.mesh.position.z = Math.max(-mapSize, Math.min(mapSize, this.player.mesh.position.z));
+                    }
                 } catch (error) {
                     console.error('Error updating player:', error);
+                    console.error('Stack:', error.stack);
                 }
             }
 
@@ -578,10 +727,58 @@ export class Game {
                     console.error('Error updating attack effects:', error);
                 }
             }
+
+            // Обновление частиц опыта
+            if (this.player && this.player.mesh) {
+                try {
+                    this.updateExpParticles(deltaTime);
+                } catch (error) {
+                    console.error('Error updating exp particles:', error);
+                }
+            }
         } catch (error) {
             console.error('Error in update():', error);
             console.error('Stack:', error.stack);
             // Продолжаем выполнение даже при ошибке
+        }
+    }
+
+    createExpParticle(position, expAmount) {
+        if (!this.scene) return;
+        
+        const particle = new ExpParticle(position, expAmount, this.scene);
+        this.expParticles.push(particle);
+    }
+
+    updateExpParticles(deltaTime) {
+        if (!this.player || !this.player.mesh) return;
+
+        const playerPosition = this.player.mesh.position.clone();
+        const attractionRadius = GameConfig.player.expPickupRadius;
+        const playerHitboxRadius = this.player.hitboxRadius || 0.5;
+
+        // Обновляем все частицы
+        for (let i = this.expParticles.length - 1; i >= 0; i--) {
+            const particle = this.expParticles[i];
+            
+            if (particle.collected) {
+                // Удаляем собранные частицы
+                this.expParticles.splice(i, 1);
+                continue;
+            }
+
+            // Обновляем частицу
+            particle.update(deltaTime, playerPosition, attractionRadius);
+
+            // Проверяем коллизию с игроком
+            if (particle.checkCollision(playerPosition, playerHitboxRadius)) {
+                // Добавляем опыт игроку
+                this.player.addExp(particle.expAmount);
+                
+                // Удаляем частицу
+                particle.collect();
+                this.expParticles.splice(i, 1);
+            }
         }
     }
 
@@ -690,7 +887,17 @@ export class Game {
             // Наносим урон игроку (с защитой от спама)
             const now = this.getElapsedTime();
             if (!this.lastPlayerDamageTime || now - this.lastPlayerDamageTime >= 0.5) {
-                this.player.takeDamage(damage);
+                // Вычисляем направление отталкивания (от моба к игроку)
+                const knockbackDirection = new THREE.Vector3()
+                    .subVectors(playerPos, mobPos)
+                    .normalize();
+                
+                // Если расстояние очень мало, используем направление от центра моба
+                if (knockbackDirection.lengthSq() < 0.01) {
+                    knockbackDirection.set(1, 0, 0); // Дефолтное направление
+                }
+                
+                this.player.takeDamage(damage, knockbackDirection);
                 this.lastPlayerDamageTime = now;
             }
         }

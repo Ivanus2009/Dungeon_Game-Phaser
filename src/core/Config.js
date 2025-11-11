@@ -9,6 +9,7 @@ export const GameConfig = {
         expMultiplier: 1.5, // множитель опыта для следующего уровня
         moveSpeed: 5.0, // скорость движения
         cameraRotationSpeed: 0.002, // скорость вращения камеры
+        expPickupRadius: 5.0, // радиус притягивания частиц опыта
     },
 
     // Настройки мобов
@@ -18,6 +19,9 @@ export const GameConfig = {
         minSpawnRate: 500, // минимальный интервал спавна (мс)
         baseHealth: 50,
         healthMultiplier: 1.2, // увеличение здоровья за уровень
+        // Масштабирование HP мобов в зависимости от времени игры
+        healthTimeMultiplier: 1.0, // базовый множитель (1.0 = без изменений)
+        healthTimeScale: 0.02, // увеличение HP за каждую секунду игры (2% в секунду)
         baseReward: {
             gold: 10,
             exp: 5

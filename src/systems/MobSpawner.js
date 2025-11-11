@@ -33,11 +33,16 @@ export class MobSpawner {
         // Уровень моба зависит от уровня игрока
         const mobLevel = Math.max(1, Math.floor(this.game.player.level / 5) + 1);
         
-        const mob = new Mob(mobType, mobLevel);
+        // Получаем текущее время игры для масштабирования HP
+        const gameTime = this.game.gameTime || 0;
+        
+        const mob = new Mob(mobType, mobLevel, gameTime);
         this.game.mobs.push(mob);
         this.game.scene.add(mob.mesh);
         
-        console.log(`Спавн моба: ${mob.mobData.name} (уровень ${mobLevel})`);
+        // Логируем информацию о мобе с учетом времени
+        const timeMultiplier = GameConfig.mobs.healthTimeMultiplier + (gameTime * GameConfig.mobs.healthTimeScale);
+        console.log(`Спавн моба: ${mob.mobData.name} (уровень ${mobLevel}, HP: ${mob.maxHealth}, множитель времени: ${timeMultiplier.toFixed(2)}x)`);
     }
 }
 

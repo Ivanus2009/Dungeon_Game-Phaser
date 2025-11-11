@@ -63,11 +63,21 @@ export class AttackEffects {
     }
 
     updateProjectile(projectileData, deltaTime) {
+        // Проверяем, что снаряд еще не был удален
+        if (!projectileData || !projectileData.object) {
+            return false;
+        }
+        
         if (projectileData.hit) {
             return false; // Снаряд уже попал
         }
 
         const projectile = projectileData.object;
+        
+        // Проверяем, что снаряд еще в сцене
+        if (!projectile.parent) {
+            return false;
+        }
         
         // Движение снаряда
         projectile.position.addScaledVector(projectileData.velocity, deltaTime);
@@ -80,11 +90,7 @@ export class AttackEffects {
         // Проверка максимального расстояния
         if (projectileData.distance > GameConfig.scene.projectile.maxDistance) {
             // Снаряд улетел слишком далеко - удаляем
-            this.scene.remove(projectile);
-            const index = this.projectiles.indexOf(projectileData);
-            if (index > -1) {
-                this.projectiles.splice(index, 1);
-            }
+            this.removeProjectile(projectileData, projectile);
             return false;
         }
 
@@ -94,24 +100,60 @@ export class AttackEffects {
         if (hitMob) {
             // Попадание!
             projectileData.hit = true;
-            this.createHitEffect(projectile.position, projectileData.damage, projectileData.color);
+            this.createHitEffect(projectile.position.clone(), projectileData.damage, projectileData.color);
             
             // Наносим урон мобу
             this.game.combatSystem.dealDamage(hitMob, projectileData.damage);
             
             // Показываем число урона
-            this.game.showDamageNumber(hitMob.mesh.position, projectileData.damage);
+            this.game.showDamageNumber(hitMob.mesh.position.clone(), projectileData.damage);
             
             // Удаляем снаряд
-            this.scene.remove(projectile);
-            const index = this.projectiles.indexOf(projectileData);
-            if (index > -1) {
-                this.projectiles.splice(index, 1);
-            }
+            this.removeProjectile(projectileData, projectile);
             return false;
         }
 
         return true; // Продолжаем движение
+    }
+    
+    removeProjectile(projectileData, projectile) {
+        // Удаляем все дочерние элементы (включая trail)
+        const children = [...projectile.children]; // Копируем массив, чтобы избежать проблем при удалении
+        children.forEach(child => {
+            projectile.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material.forEach(mat => mat.dispose());
+                } else {
+                    child.material.dispose();
+                }
+            }
+        });
+        
+        // Удаляем снаряд из сцены
+        if (projectile.parent) {
+            projectile.parent.remove(projectile);
+        }
+        if (this.scene.children.includes(projectile)) {
+            this.scene.remove(projectile);
+        }
+        
+        // Освобождаем ресурсы снаряда
+        if (projectile.geometry) projectile.geometry.dispose();
+        if (projectile.material) {
+            if (Array.isArray(projectile.material)) {
+                projectile.material.forEach(mat => mat.dispose());
+            } else {
+                projectile.material.dispose();
+            }
+        }
+        
+        // Удаляем из массива снарядов
+        const index = this.projectiles.indexOf(projectileData);
+        if (index > -1) {
+            this.projectiles.splice(index, 1);
+        }
     }
 
     checkCollisions(projectilePos, projectileRadius) {
@@ -181,10 +223,31 @@ export class AttackEffects {
     }
 
     update(deltaTime) {
-        // Обновляем все эффекты
-        this.effects = this.effects.filter(effect => {
-            return effect.animate(deltaTime);
-        });
+        // Обновляем все эффекты и удаляем те, которые вернули false
+        const effectsToKeep = [];
+        for (let i = 0; i < this.effects.length; i++) {
+            const effect = this.effects[i];
+            try {
+                // Проверяем, что объект эффекта еще существует
+                if (!effect.object || !effect.object.parent) {
+                    // Объект уже удален, пропускаем
+                    continue;
+                }
+                
+                // Вызываем animate и проверяем результат
+                const shouldKeep = effect.animate(deltaTime);
+                if (shouldKeep) {
+                    effectsToKeep.push(effect);
+                } else {
+                    // Эффект должен быть удален - объект уже удален из сцены в animate
+                    // Просто не добавляем его в новый массив
+                }
+            } catch (error) {
+                console.error('Error updating effect:', error);
+                // Удаляем эффект при ошибке
+            }
+        }
+        this.effects = effectsToKeep;
     }
 
     clear() {
